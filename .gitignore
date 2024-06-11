@@ -1,2 +1,8 @@
-build/
-dist/
+# Ignore everything
+*
+
+# Except the dist folder
+!/dist/
+
+# Exclude all dotfiles
+.*
