@@ -5,6 +5,7 @@
 !/.gitignore
 !/dist/
 !/dist/Output/
+!/dist/Output/PortKnockUtilitySetup.exe
 !/dist/PortknockingUtility/
 !/dist/PortknockingUtility/PortknockingUtility.exe
 !/README.md
