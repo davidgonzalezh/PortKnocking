@@ -1,1 +1,0 @@
-[["MDE-1", {"ip": "d4490d705224.sn.mynetname.net", "ports": [["TCP", "1000"], ["TCP", "2000"], ["None", ""], ["None", ""], ["None", ""]], "validation_port": ""}], ["MDE-2", {"ip": "d4490d705224.sn.mynetname.net", "ports": [["TCP", "1000"], ["TCP", "2000"], ["None", ""], ["None", ""], ["None", ""]], "validation_port": "8291"}]]
