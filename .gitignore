@@ -4,8 +4,7 @@
 # But not these files and directories:
 !/.gitignore
 !/images/
-!/dist/
-!/dist/release/
-!/dist/release/PortKnockUtilitySetup.exe
+!/release/
+!/release/PortKnockUtilitySetup.exe
 !/README.md
 !/LICENSE

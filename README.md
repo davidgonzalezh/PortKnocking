@@ -71,13 +71,14 @@ Note: If the ports do not show correctly when you load a configuration, double-c
 Help
 
 For more detailed help and instructions, refer to the help.txt file included with the application or access it through the "Help" menu item in the application.
-License
+
+### License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
-Contact
+
+### Contact
 
 For questions or feedback, please contact David Gonzalez and LAMBDA Strategies at your-email@example.com.
 
 Visit our website: [LAMBDA Strategies ](www.lambdastrategies.com)
 
-typescript
