@@ -14,17 +14,17 @@ PortknockingUtility is a tool designed to perform port knocking on a target host
 
 ### Download
 
-You can download the latest version of PortknockingUtility from the [Releases](https://github.com/yourusername/PortknockingUtility/releases) page. Choose between the executable file and the installer.
+You can download the latest version of PortknockingUtility from the [Releases](https://github.com/davidgonzalezh/PortKnock/blob/main/dist/release/PortKnockUtilitySetup.exe) page. Choose between the executable file and the installer.
 
 ### Executable
 
-1. Download the `PortknockingUtility.exe` file from the [latest release](https://github.com/yourusername/PortknockingUtility/releases/latest).
+1. Download the `PortknockingUtility.exe` file from the [latest release](https://github.com/davidgonzalezh/PortKnock/blob/main/dist/release/PortKnockUtilitySetup.exe).
 2. Place the executable in a preferred directory.
 3. Double-click the executable to run the application.
 
 ### Installer
 
-1. Download the `PortknockingUtilityInstaller.exe` file from the [latest release](https://github.com/yourusername/PortknockingUtility/releases/latest).
+1. Download the `PortknockingUtilityInstaller.exe` file from the [latest release](https://github.com/davidgonzalezh/PortKnock/blob/main/dist/release/PortKnockUtilitySetup.exe).
 2. Run the installer and follow the on-screen instructions to install PortknockingUtility on your system.
 3. Launch the application from the start menu or desktop shortcut.
 
