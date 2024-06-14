@@ -12,16 +12,6 @@ PortknockingUtility is a tool designed to perform port knocking on a target host
 
 ## Installation
 
-### Download
-
-You can download the latest version of PortknockingUtility from the [Releases](https://github.com/davidgonzalezh/PortKnock/blob/main/dist/release/PortKnockUtilitySetup.exe) page. Choose between the executable file and the installer.
-
-### Executable
-
-1. Download the `PortknockingUtility.exe` file from the [latest release](https://github.com/davidgonzalezh/PortKnock/blob/main/dist/release/PortKnockUtilitySetup.exe).
-2. Place the executable in a preferred directory.
-3. Double-click the executable to run the application.
-
 ### Installer
 
 1. Download the `PortknockingUtilityInstaller.exe` file from the [latest release](https://github.com/davidgonzalezh/PortKnock/blob/main/dist/release/PortKnockUtilitySetup.exe).
@@ -54,16 +44,40 @@ The main window of PortknockingUtility consists of several sections:
 - **Edit Configuration**: Load a configuration, make changes, and click "Save Config" to update it.
 - **Delete Configuration**: Select a configuration from the list and click "Delete Config" to remove it.
 
-## Help
+### Configuration File
 
-For more detailed help and instructions, refer to the `help.txt` file included with the application or access it through the "Help" menu item in the application.
+The configurations are saved in a JSON file named `configurations.json`. Each configuration contains the target IP/Hostname, ports and protocols, and a validation port if specified. The format of the JSON file is as follows:
 
-## License
+```json
+[
+    {
+        "configuration_name": {
+            "ip": "target_ip_or_hostname",
+            "ports": [
+                ["protocol1", "port1"],
+                ["protocol2", "port2"],
+                ["protocol3", "port3"],
+                ["protocol4", "port4"],
+                ["protocol5", "port5"]
+            ],
+            "validation_port": "validation_port"
+        }
+    }
+]
+```
+### Note
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+Note: If the ports do not show correctly when you load a configuration, double-click the configuration host in the list, and the ports will display correctly.
+Help
 
-## Contact
+For more detailed help and instructions, refer to the help.txt file included with the application or access it through the "Help" menu item in the application.
+License
 
-For questions or feedback, please contact David Gonzalez and LAMBDA Strategies at [your-email@example.com](mailto:your-email@example.com).
+This project is licensed under the MIT License. See the LICENSE file for details.
+Contact
 
-Visit our website: [www.lambdastrategies.com](http://www.lambdastrategies.com)
+For questions or feedback, please contact David Gonzalez and LAMBDA Strategies at your-email@example.com.
+
+Visit our website: [LAMBDA Strategies ](www.lambdastrategies.com)
+
+typescript
