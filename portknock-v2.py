@@ -1,18 +1,26 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, Menu
+from tkinter import ttk, Menu, messagebox
 import socket
 import json
 import subprocess
 import threading
+import requests
 
 class PortKnockingApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Port Knocking Tool")
+        self.root.geometry("800x600")
+        self.root.minsize(600, 400)
+        self.root.attributes('-topmost', True)
+        self.root.after(1000, lambda: self.root.attributes('-topmost', False))
         self.configurations = []
-        self.additional_ports_visible = [False, False, False]  # Track visibility of additional ports
+        self.ping_process = None
+        self.traceroute_process = None
+        self.knock_process = None
         self.create_widgets()
         self.load_configurations()
+        self.root.after(1000, self.display_public_ip_addresses)
 
     def create_widgets(self):
         # Menu
@@ -27,23 +35,35 @@ class PortKnockingApp:
         file_menu.add_command(label="Exit", command=self.root.quit)
         self.menu.add_cascade(label="File", menu=file_menu)
 
-        self.view_menu = Menu(self.menu, tearoff=0)
-        self.view_menu.add_checkbutton(label="Show Port 3", command=lambda: self.toggle_port_visibility(2))
-        self.view_menu.add_checkbutton(label="Show Port 4", command=lambda: self.toggle_port_visibility(3))
-        self.view_menu.add_checkbutton(label="Show Port 5", command=lambda: self.toggle_port_visibility(4))
-        self.menu.add_cascade(label="View", menu=self.view_menu)
-
+        # Help menu item
         help_menu = Menu(self.menu, tearoff=0)
         help_menu.add_command(label="Help", command=self.show_help)
         self.menu.add_cascade(label="Help", menu=help_menu)
 
         # Main Frame
         self.main_frame = tk.Frame(self.root)
-        self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.main_frame.grid(row=0, column=0, sticky="nsew")
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
+        # Public IP Display
+        self.public_ip_frame = tk.Frame(self.main_frame)
+        self.public_ip_frame.grid(row=0, column=0, pady=5, sticky="ew")
+        self.public_ip_label_v4 = tk.Label(self.public_ip_frame, text="Public IPv4: ", font=("Helvetica", 12, "bold"), anchor="w")
+        self.public_ip_label_v4.grid(row=0, column=0, sticky="ew")
+        self.public_ip_value_v4 = tk.Label(self.public_ip_frame, text="", font=("Helvetica", 12, "bold"), anchor="e")
+        self.public_ip_value_v4.grid(row=0, column=1, sticky="ew")
+        self.public_ip_label_v6 = tk.Label(self.public_ip_frame, text="Public IPv6: ", font=("Helvetica", 12, "bold"), anchor="w")
+        self.public_ip_label_v6.grid(row=1, column=0, sticky="ew")
+        self.public_ip_value_v6 = tk.Label(self.public_ip_frame, text="", font=("Helvetica", 12, "bold"), anchor="e")
+        self.public_ip_value_v6.grid(row=1, column=1, sticky="ew")
+
+        self.check_ip_button = tk.Button(self.public_ip_frame, text="Check", command=self.display_public_ip_addresses)
+        self.check_ip_button.grid(row=2, column=0, columnspan=2, pady=5)
 
         # Configuration Frame
         self.config_frame = tk.LabelFrame(self.main_frame, text="Configuration")
-        self.config_frame.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+        self.config_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
 
         self.ip_label = tk.Label(self.config_frame, text="Target IP/Hostname (IPv4/IPv6): *")
         self.ip_label.grid(row=0, column=0, sticky=tk.W)
@@ -65,7 +85,11 @@ class PortKnockingApp:
             port_entry = tk.Entry(self.config_frame)
             port_entry.grid(row=i+1, column=3, sticky=tk.EW)
 
-            self.port_entries.append((protocol_combobox, port_entry))
+            enable_var = tk.BooleanVar()
+            enable_check = tk.Checkbutton(self.config_frame, variable=enable_var, command=lambda idx=i: self.toggle_optional_port(idx))
+            enable_check.grid(row=i+1, column=4)
+
+            self.port_entries.append((protocol_combobox, port_entry, enable_var, enable_check))
 
         self.validation_port_label = tk.Label(self.config_frame, text="Validation Port (Optional):")
         self.validation_port_label.grid(row=6, column=0, sticky=tk.W)
@@ -90,12 +114,19 @@ class PortKnockingApp:
         self.edit_button = tk.Button(self.config_button_frame, text="Edit Config", command=self.edit_configuration)
         self.edit_button.grid(row=0, column=2, padx=5)
 
+        self.delete_button = tk.Button(self.config_button_frame, text="Delete Config", command=self.delete_configuration)
+        self.delete_button.grid(row=0, column=3, padx=5)
+
         # Saved Configurations and Status/Logs Frame
         self.bottom_frame = tk.Frame(self.main_frame)
-        self.bottom_frame.grid(row=1, column=0, padx=10, pady=5, sticky="nsew")
+        self.bottom_frame.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")
+        self.main_frame.grid_rowconfigure(2, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
 
         self.saved_configs_frame = tk.LabelFrame(self.bottom_frame, text="Saved Configurations")
         self.saved_configs_frame.grid(row=0, column=0, sticky="nsew")
+        self.bottom_frame.grid_rowconfigure(0, weight=1)
+        self.bottom_frame.grid_columnconfigure(0, weight=1)
 
         self.config_listbox = tk.Listbox(self.saved_configs_frame)
         self.config_listbox.pack(fill="both", expand=True)
@@ -103,6 +134,8 @@ class PortKnockingApp:
 
         self.status_frame = tk.LabelFrame(self.bottom_frame, text="Status and Logs")
         self.status_frame.grid(row=0, column=1, sticky="nsew")
+        self.bottom_frame.grid_rowconfigure(0, weight=1)
+        self.bottom_frame.grid_columnconfigure(1, weight=1)
 
         self.output_text = tk.Text(self.status_frame, height=10, wrap=tk.WORD)
         self.output_text.pack(fill="both", expand=True)
@@ -110,38 +143,33 @@ class PortKnockingApp:
 
         # Buttons for Actions
         self.button_frame = tk.Frame(self.main_frame)
-        self.button_frame.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
+        self.button_frame.grid(row=3, column=0, padx=10, pady=5, sticky="ew")
+        self.button_frame.grid_columnconfigure(0, weight=1)
 
-        self.knock_button = tk.Button(self.button_frame, text="KNOCK!", command=self.knock_ports)
+        self.knock_button = tk.Button(self.button_frame, text="KNOCK!", command=self.toggle_knock, font=("Helvetica", 12, "bold"))
         self.knock_button.grid(row=0, column=0, padx=5)
 
-        self.ping_button = tk.Button(self.button_frame, text="PING", command=self.ping_target)
+        self.tools_frame = tk.LabelFrame(self.main_frame, text="Tools")
+        self.tools_frame.grid(row=4, column=0, padx=10, pady=5, sticky="ew")
+
+        self.ping_button = tk.Button(self.tools_frame, text="PING", command=self.ping_target)
         self.ping_button.grid(row=0, column=1, padx=5)
 
-        self.traceroute_button = tk.Button(self.button_frame, text="TRACEROUTE", command=self.traceroute_target)
+        self.traceroute_button = tk.Button(self.tools_frame, text="TRACEROUTE", command=self.traceroute_target)
         self.traceroute_button.grid(row=0, column=2, padx=5)
 
         # Status Bar
         self.status_bar = tk.Label(self.root, text="Status: Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.status_bar.grid(row=1, column=0, sticky="ew")
 
         self.update_additional_ports_view()
-
         self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_rowconfigure(1, weight=0)
 
     def clear_status(self):
         self.output_text.config(state=tk.NORMAL)
         self.output_text.delete(1.0, tk.END)
         self.output_text.config(state=tk.DISABLED)
-
-    def show_tooltip(self, event, text):
-        tooltip = tk.Toplevel()
-        tooltip.wm_overrideredirect(True)
-        tooltip.wm_geometry(f"+{event.x_root + 10}+{event.y_root + 10}")
-        label = tk.Label(tooltip, text=text, background="yellow", relief="solid", borderwidth=1)
-        label.pack()
-        tooltip.after(1500, tooltip.destroy)
 
     def validate_ip_or_hostname(self, ip_or_hostname):
         try:
@@ -157,6 +185,12 @@ class PortKnockingApp:
         except ValueError:
             return False
 
+    def toggle_knock(self):
+        if self.knock_process:
+            self.stop_knock()
+        else:
+            self.knock_ports()
+
     def knock_ports(self):
         self.clear_status()
         ip_or_hostname = self.ip_entry.get()
@@ -166,31 +200,38 @@ class PortKnockingApp:
         ]
         validation_port = self.validation_port_entry.get()
 
-        # Validate IP/Hostname and ports
         if not self.validate_ip_or_hostname(ip_or_hostname):
             self.status_bar.config(text="Status: Invalid IP/Hostname", fg="red")
-            messagebox.showerror("Invalid IP/Hostname", "Please enter a valid IP address or hostname.")
+            self.update_output("Invalid IP/Hostname. Please enter a valid IP address or hostname.")
             return
 
         for i in range(2):
             protocol, port = ports[i]
             if protocol == "None" or not self.validate_port(port):
                 self.status_bar.config(text="Status: Invalid Ports", fg="red")
-                messagebox.showerror("Invalid Ports", "Please select a protocol and enter valid ports for the required fields.")
+                self.update_output("Invalid Ports. Please select a protocol and enter valid ports for the required fields.")
                 return
 
-        self.status_bar.config(text="Status: Knocking...", fg="blue")
+        self.status_bar.config(text=f"Status: Knocking on {ip_or_hostname}...", fg="blue")
+        self.knock_button.config(text="STOP", bg="red")
         self.update_output("Knocking...")
 
-        # Resolve hostname to IP
         try:
             ip_list = socket.getaddrinfo(ip_or_hostname, None)
             ip = ip_list[0][4][0]
         except socket.error:
             self.status_bar.config(text="Status: Hostname Resolution Failed", fg="red")
-            messagebox.showerror("Hostname Resolution Failed", "Unable to resolve the hostname.")
+            self.update_output("Hostname Resolution Failed. Unable to resolve the hostname.")
+            self.knock_button.config(text="KNOCK!", bg="SystemButtonFace")
             return
 
+        if validation_port:
+            self.check_port_status(ip, int(validation_port), "before knock")
+
+        self.knock_process = threading.Thread(target=self.perform_knock, args=(ip, ports, validation_port))
+        self.knock_process.start()
+
+    def perform_knock(self, ip, ports, validation_port):
         for protocol, port in ports:
             if protocol != "None" and self.validate_port(port):
                 self.status_bar.config(text=f"Status: Knocking on {protocol} port {port}...", fg="blue")
@@ -201,13 +242,17 @@ class PortKnockingApp:
         self.update_output("Knock Complete")
 
         if validation_port:
-            if self.validate_port(validation_port):
-                self.status_bar.config(text=f"Status: Validating on port {validation_port}...", fg="blue")
-                self.update_output(f"Validating on port {validation_port}...")
-                threading.Thread(target=self.validate_knock, args=(ip, int(validation_port))).start()
-            else:
-                self.status_bar.config(text="Status: Invalid Validation Port", fg="red")
-                self.update_output("Invalid Validation Port")
+            self.check_port_status(ip, int(validation_port), "after knock")
+
+        self.knock_process = None
+        self.knock_button.config(text="KNOCK!", bg="SystemButtonFace")
+
+    def stop_knock(self):
+        if self.knock_process:
+            self.knock_process = None
+            self.status_bar.config(text="Status: Knock Stopped", fg="red")
+            self.update_output("Knock Stopped")
+            self.knock_button.config(text="KNOCK!", bg="SystemButtonFace")
 
     def send_packet(self, ip, protocol, port):
         try:
@@ -219,24 +264,30 @@ class PortKnockingApp:
         except socket.error:
             pass
 
-    def validate_knock(self, ip, validation_port):
+    def check_port_status(self, ip, port, time):
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            ip_type = socket.AF_INET6 if ":" in ip else socket.AF_INET
+            sock = socket.socket(ip_type, socket.SOCK_STREAM)
             sock.settimeout(2)
-            sock.connect((ip, validation_port))
-            self.status_bar.config(text="Status: Knock Validation Successful", fg="green")
-            self.update_output("Knock Validation Successful")
+            result = sock.connect_ex((ip, port))
+            if result == 0:
+                status = "open"
+            elif result == 10061:  # Connection refused
+                status = "closed"
+            else:
+                status = "firewalled"
+            self.update_output(f"Validation port {port} is {status} {time}.")
+        except socket.error as e:
+            self.update_output(f"Error checking port {port} status {time}: {e}")
+        finally:
             sock.close()
-        except socket.timeout:
-            self.status_bar.config(text="Status: Knock Validation Timed Out", fg="red")
-            self.update_output("Knock Validation Timed Out")
-        except socket.error:
-            self.status_bar.config(text="Status: Knock Validation Failed", fg="red")
-            self.update_output("Knock Validation Failed")
 
     def save_configuration(self):
         ip_or_hostname = self.ip_entry.get()
-        config_name = self.config_name_entry.get().strip() or f"Config-{ip_or_hostname}"
+        config_name = self.config_name_entry.get().strip()
+        if not config_name:
+            config_name = f"{ip_or_hostname}-{len(self.configurations) + 1}"
+            self.config_name_entry.insert(0, config_name)
         ports = [
             (self.port_entries[i][0].get(), self.port_entries[i][1].get())
             for i in range(5)
@@ -260,9 +311,15 @@ class PortKnockingApp:
                 self.port_entries[i][0].set(config["ports"][i][0])
                 self.port_entries[i][1].delete(0, tk.END)
                 self.port_entries[i][1].insert(0, config["ports"][i][1])
+                if i >= 2:
+                    self.port_entries[i][2].set(True if config["ports"][i][0] != "None" else False)
 
             self.validation_port_entry.delete(0, tk.END)
             self.validation_port_entry.insert(0, config["validation_port"])
+
+            self.config_name_entry.delete(0, tk.END)
+            self.config_name_entry.insert(0, self.configurations[selected_index[0]][0])
+        self.update_additional_ports_view()
 
     def save_configurations_to_file(self):
         with open("configurations.json", "w") as file:
@@ -280,6 +337,15 @@ class PortKnockingApp:
         self.config_listbox.delete(0, tk.END)
         for name, _ in self.configurations:
             self.config_listbox.insert(tk.END, name)
+
+    def delete_configuration(self):
+        selected_index = self.config_listbox.curselection()
+        if selected_index:
+            del self.configurations[selected_index[0]]
+            self.update_config_listbox()
+            self.save_configurations_to_file()
+            self.status_bar.config(text="Status: Configuration Deleted", fg="green")
+            self.update_output("Configuration Deleted")
 
     def show_help(self):
         help_message = (
@@ -305,6 +371,7 @@ class PortKnockingApp:
             "© 2024 David Gonzalez and LAMBDA Strategies\n"
             "Visit: www.lambdastrategies.com"
         )
+
         messagebox.showinfo("Help", help_message)
 
     def update_output(self, text):
@@ -314,71 +381,91 @@ class PortKnockingApp:
         self.output_text.config(state=tk.DISABLED)
 
     def ping_target(self):
-        self.clear_status()
-        ip_or_hostname = self.ip_entry.get()
-        if not self.validate_ip_or_hostname(ip_or_hostname):
-            self.status_bar.config(text="Status: Invalid IP/Hostname", fg="red")
-            messagebox.showerror("Invalid IP/Hostname", "Please enter a valid IP address or hostname.")
-            return
+        if self.ping_process:
+            self.stop_ping()
+        else:
+            self.clear_status()
+            ip_or_hostname = self.ip_entry.get()
+            if not self.validate_ip_or_hostname(ip_or_hostname):
+                self.status_bar.config(text="Status: Invalid IP/Hostname", fg="red")
+                self.update_output("Invalid IP/Hostname. Please enter a valid IP address or hostname.")
+                return
 
-        self.status_bar.config(text="Status: Pinging...", fg="blue")
-        threading.Thread(target=self.run_ping, args=(ip_or_hostname,)).start()
+            self.status_bar.config(text=f"Status: Pinging {ip_or_hostname}...", fg="blue")
+            self.ping_button.config(text="STOP", bg="red")
+            threading.Thread(target=self.run_ping, args=(ip_or_hostname,)).start()
+
+    def stop_ping(self):
+        if self.ping_process:
+            self.ping_process.terminate()
+            self.ping_process = None
+            self.status_bar.config(text="Status: Ping Stopped", fg="red")
+            self.update_output("Ping Stopped")
+            self.ping_button.config(text="PING", bg="SystemButtonFace")
 
     def run_ping(self, ip_or_hostname):
-        with subprocess.Popen(["ping", ip_or_hostname], stdout=subprocess.PIPE, text=True) as proc:
-            for line in proc.stdout:
-                self.update_output(line.strip())
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        self.ping_process = subprocess.Popen(["ping", ip_or_hostname], stdout=subprocess.PIPE, text=True, startupinfo=startupinfo)
+        for line in self.ping_process.stdout:
+            self.update_output(line.strip())
+        self.ping_process = None
         self.status_bar.config(text="Status: Ping Complete", fg="green")
+        self.ping_button.config(text="PING", bg="SystemButtonFace")
 
     def traceroute_target(self):
-        self.clear_status()
-        ip_or_hostname = self.ip_entry.get()
-        if not self.validate_ip_or_hostname(ip_or_hostname):
-            self.status_bar.config(text="Status: Invalid IP/Hostname", fg="red")
-            messagebox.showerror("Invalid IP/Hostname", "Please enter a valid IP address or hostname.")
-            return
+        if self.traceroute_process:
+            self.stop_traceroute()
+        else:
+            self.clear_status()
+            ip_or_hostname = self.ip_entry.get()
+            if not self.validate_ip_or_hostname(ip_or_hostname):
+                self.status_bar.config(text="Status: Invalid IP/Hostname", fg="red")
+                self.update_output("Invalid IP/Hostname. Please enter a valid IP address or hostname.")
+                return
 
-        self.status_bar.config(text="Status: Tracing route...", fg="blue")
-        threading.Thread(target=self.run_traceroute, args=(ip_or_hostname,)).start()
+            self.status_bar.config(text=f"Status: Tracing route to {ip_or_hostname}...", fg="blue")
+            self.traceroute_button.config(text="STOP", bg="red")
+            threading.Thread(target=self.run_traceroute, args=(ip_or_hostname,)).start()
+
+    def stop_traceroute(self):
+        if self.traceroute_process:
+            self.traceroute_process.terminate()
+            self.traceroute_process = None
+            self.status_bar.config(text="Status: Traceroute Stopped", fg="red")
+            self.update_output("Traceroute Stopped")
+            self.traceroute_button.config(text="TRACEROUTE", bg="SystemButtonFace")
 
     def run_traceroute(self, ip_or_hostname):
-        with subprocess.Popen(["tracert", "-d", ip_or_hostname], stdout=subprocess.PIPE, text=True) as proc:
-            for line in proc.stdout:
-                self.update_output(line.strip())
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        self.traceroute_process = subprocess.Popen(["tracert", "-d", ip_or_hostname], stdout=subprocess.PIPE, text=True, startupinfo=startupinfo)
+        for line in self.traceroute_process.stdout:
+            self.update_output(line.strip())
+        self.traceroute_process = None
         self.status_bar.config(text="Status: Traceroute Complete", fg="green")
+        self.traceroute_button.config(text="TRACEROUTE", bg="SystemButtonFace")
 
-    def toggle_view(self, view):
-        if view == "status":
-            if self.status_frame.grid_info():
-                self.status_frame.grid_remove()
-                self.view_menu.entryconfig("View Status", indicatoron=False)
-            else:
-                self.status_frame.grid(row=1, column=1, sticky="nsew")
-                self.view_menu.entryconfig("View Status", indicatoron=True)
-        elif view == "configs":
-            if self.saved_configs_frame.grid_info():
-                self.saved_configs_frame.grid_remove()
-                self.view_menu.entryconfig("View Saved Configurations", indicatoron=False)
-            else:
-                self.saved_configs_frame.grid(row=1, column=0, sticky="nsew")
-                self.view_menu.entryconfig("View Saved Configurations", indicatoron=True)
-
-        self.root.update_idletasks()
-        self.root.geometry("")
-
-    def toggle_port_visibility(self, port_index):
-        if port_index < len(self.additional_ports_visible) + 2:
-            self.additional_ports_visible[port_index - 2] = not self.additional_ports_visible[port_index - 2]
-            self.update_additional_ports_view()
+    def toggle_optional_port(self, idx):
+        if self.port_entries[idx][2].get():
+            self.port_entries[idx][0].config(state="readonly")
+            self.port_entries[idx][1].config(state=tk.NORMAL)
+        else:
+            self.port_entries[idx][0].set("None")
+            self.port_entries[idx][0].config(state=tk.DISABLED)
+            self.port_entries[idx][1].delete(0, tk.END)
+            self.port_entries[idx][1].config(state=tk.DISABLED)
 
     def update_additional_ports_view(self):
-        for i in range(2, 5):
-            if self.additional_ports_visible[i - 2]:
-                self.port_entries[i][0].grid()
-                self.port_entries[i][1].grid()
+        for i in range(5):
+            if i < 2:
+                self.port_entries[i][0].config(state="readonly")
+                self.port_entries[i][1].config(state=tk.NORMAL)
             else:
-                self.port_entries[i][0].grid_remove()
-                self.port_entries[i][1].grid_remove()
+                self.port_entries[i][0].config(state=tk.DISABLED)
+                self.port_entries[i][1].config(state=tk.DISABLED)
 
         self.root.update_idletasks()
         self.root.geometry("")
@@ -387,9 +474,11 @@ class PortKnockingApp:
         self.ip_entry.delete(0, tk.END)
         self.config_name_entry.delete(0, tk.END)
         self.validation_port_entry.delete(0, tk.END)
-        for protocol_combobox, port_entry in self.port_entries:
+        for protocol_combobox, port_entry, enable_var, enable_check in self.port_entries:
             protocol_combobox.set("None")
             port_entry.delete(0, tk.END)
+            enable_var.set(False)
+        self.update_additional_ports_view()
 
     def edit_configuration(self):
         selected_index = self.config_listbox.curselection()
@@ -402,12 +491,42 @@ class PortKnockingApp:
                 self.port_entries[i][0].set(config["ports"][i][0])
                 self.port_entries[i][1].delete(0, tk.END)
                 self.port_entries[i][1].insert(0, config["ports"][i][1])
+                if i >= 2:
+                    self.port_entries[i][2].set(True if config["ports"][i][0] != "None" else False)
 
             self.validation_port_entry.delete(0, tk.END)
             self.validation_port_entry.insert(0, config["validation_port"])
 
             self.config_name_entry.delete(0, tk.END)
             self.config_name_entry.insert(0, self.configurations[selected_index[0]][0])
+        self.update_additional_ports_view()
+
+    def display_public_ip_addresses(self):
+        self.status_bar.config(text="Status: Fetching public IPs...", fg="blue")
+        self.update_output("Fetching public IPs...")
+        self.root.update_idletasks()
+
+        def fetch_ip():
+            ipv4_address = "Not Available"
+            ipv6_address = "Not Available"
+            try:
+                ipv4_response = requests.get('https://api4.ipify.org?format=json').json()
+                ipv4_address = ipv4_response.get('ip', 'Not Available')
+            except requests.RequestException:
+                pass
+
+            try:
+                ipv6_response = requests.get('https://api6.ipify.org?format=json').json()
+                ipv6_address = ipv6_response.get('ip', 'Not Available')
+            except requests.RequestException:
+                pass
+
+            self.public_ip_value_v4.config(text=ipv4_address)
+            self.public_ip_value_v6.config(text=ipv6_address)
+            self.status_bar.config(text="Status: Ready", fg="green")
+            self.update_output("Public IPs fetched successfully.")
+
+        threading.Thread(target=fetch_ip).start()
 
 if __name__ == "__main__":
     root = tk.Tk()
