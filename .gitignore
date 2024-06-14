@@ -1,8 +1,11 @@
-# Ignore everything
+# Ignore all files
 *
 
-# Except the dist folder
+# But not these files and directories:
+!/.gitignore
 !/dist/
-
-# Exclude all dotfiles
-.*
+!/dist/Output/
+!/dist/PortknockingUtility/
+!/dist/PortknockingUtility/PortknockingUtility.exe
+!/README.md
+!/LICENSE
